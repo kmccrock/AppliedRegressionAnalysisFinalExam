@@ -1,0 +1,691 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+widgets:
+- mathjax
+- bootstrap
+- quiz
+- shiny
+- interactive
+- latex_macros
+---
+
+# **STAT I512, Honglang Wang (hlwang)**
+# **Final Exam**
+# **Kyle McCrocklin**
+
+
+## Problem 1:
+```{r}
+library(MASS)
+library(ggplot2)
+library(corrplot)
+library(splines)
+set.seed(42)
+
+load("G:/Other computers/My Laptop/Google Drive/STAT512 Projects/Final Exam/meps512.RData")
+
+# Predictors:
+# AGE42X, ADBMI42, MNHLTH42, FAMINC18, RACETHX, SEX
+# age, BMI, perceived mental health status, family income, race and gender
+
+# Response:
+# TOTEXP18 = total adult medical expenditures. 
+
+# Convert to factors
+data$MNHLTH42 = as.factor(data$MNHLTH42)
+data$RACETHX = as.factor(data$RACETHX)
+data$SEX = as.factor(data$SEX)
+
+colSums(is.na(data))
+```
+```{r}
+m1 = lm(TOTEXP18 ~ AGE42X, data=data)
+cat('\nMODEL 1:')
+summary(m1)
+
+m2 = lm(TOTEXP18 ~ AGE42X + SEX, data=data)
+cat('\nMODEL 2:')
+summary(m2)
+
+m3 = lm(TOTEXP18 ~ AGE42X * SEX, data=data)
+cat('\nMODEL 3:')
+summary(m3)
+
+
+```
+### a) 
+In model 1, β1 represents the change in medical expenditure for an increase in age of 1 year. This captures the relationship between age and medical expenditure without accounting for the potential influence of any other variables.
+
+In model 2, β1 represents the change in medical expenditure for an increase in age of 1 year while holding gender constant. This isolates the effects of each predictor from the other which gives a more precise understanding of each predictors contribution to the response.
+
+### b)
+The change in expected response if age increases by 1 while sex held fixed for Model 2 is an increase of $203.08
+
+
+### c)
+The change in expected response if age increases by 1 while sex held fixed for Model 3 is an increase of...
+for females (X2=0): β1 = $178.93
+for males (X2=1): β1 + β3 = 178.93 + 52.89 = $231.82
+
+
+## Problem 2:
+###Print summary statistics
+```{r}
+# summary statistics
+cat('\nContinuous variables:\n')
+summary(data[, c("TOTEXP18", "AGE42X", "ADBMI42", "FAMINC18")])
+cat('\nMental health:')
+table(data$MNHLTH42)
+cat('\nRace:')
+table(data$RACETHX)
+cat('\nGender:')
+table(data$SEX)
+```
+### Investigate distribution of variables using plots
+```{r}
+# pairwise scatterplot
+pairs(data[, c("TOTEXP18", "AGE42X", "ADBMI42", "FAMINC18")], 
+      pch = 16,
+      cex = 0.3)
+
+# correlation matrix
+cor_matrix = cor(data[, c("TOTEXP18", "AGE42X", "ADBMI42", "FAMINC18")], use = "complete.obs")
+corrplot(cor_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45, addCoef.col = "black")
+
+# histograms for continuous variables
+ggplot(data, aes(x = TOTEXP18)) + 
+  geom_histogram(binwidth = 500, fill = "blue", color = "black", alpha = 0.7) +
+  ggtitle("Histogram of Total Medical Expenditures (TOTEXP18)") +
+  xlab("Total Medical Expenditures") +
+  ylab("Frequency")
+
+ggplot(data, aes(x = AGE42X)) + 
+  geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+  ggtitle("Histogram of Age (AGE42X)") +
+  xlab("Age") +
+  ylab("Frequency")
+
+ggplot(data, aes(x = ADBMI42)) + 
+  geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
+  ggtitle("Histogram of BMI (ADBMI42)") +
+  xlab("BMI") +
+  ylab("Frequency")
+
+ggplot(data, aes(x = FAMINC18)) + 
+  geom_histogram(binwidth = 5000, fill = "blue", color = "black", alpha = 0.7) +
+  ggtitle("Histogram of Family Income (FAMINC18)") +
+  xlab("Family Income") +
+  ylab("Frequency")
+
+# boxplot for `TOTEXP18` by gender
+ggplot(data, aes(x = SEX, y = TOTEXP18, fill = SEX)) + 
+  geom_boxplot() +
+  ggtitle("Boxplot of Total Medical Expenditures by Gender") +
+  xlab("Gender") +
+  ylab("Total Medical Expenditures")
+
+# boxplot for `TOTEXP18` by perceived mental health status
+ggplot(data, aes(x = MNHLTH42, y = TOTEXP18, fill = MNHLTH42)) + 
+  geom_boxplot() +
+  ggtitle("Boxplot of Total Medical Expenditures by Mental Health Status") +
+  xlab("Mental Health Status") +
+  ylab("Total Medical Expenditures")
+
+# boxplot for `TOTEXP18` by race
+ggplot(data, aes(x = RACETHX, y = TOTEXP18, fill = RACETHX)) + 
+  geom_boxplot() +
+  ggtitle("Boxplot of Total Medical Expenditures by Race/Ethnicity") +
+  xlab("Race/Ethnicity") +
+  ylab("Total Medical Expenditures")
+```
+### BMI appears to have some invalid data. The histogram bar including BMIs less than 1 does not make sense.
+```{r}
+data_raw = data
+data = data[data$ADBMI42 >= 1, ]
+```
+
+### Negative family income also does not make sense.
+```{r}
+data = data[data$FAMINC18 >= 0, ]
+```
+
+### Also going to remove the 6 'invalid' mental health assessments.
+```{r}
+data = data[data$MNHLTH42 != 'INVALID', ]
+```
+
+### The response is heavily skewed. I want to see what it would look like with a log or box-cox transformation.
+```{r}
+# log
+data$log_TOTEXP18 = log(data$TOTEXP18+1)
+ggplot(data, aes(x = log_TOTEXP18)) + 
+  geom_histogram(binwidth = .1, fill = "blue", color = "black", alpha = 0.7) +
+  ggtitle("Histogram of Total Medical Expenditures (log_TOTEXP18)") +
+  xlab("Total Medical Expenditures") +
+  ylab("Frequency")
+
+# box-cox
+boxcox_result <- boxcox(TOTEXP18+1 ~ 1, data = data, lambda = seq(-2, 2, by = 0.1))
+optimal_lambda <- boxcox_result$x[which.max(boxcox_result$y)]
+print(optimal_lambda)
+data$boxcox_TOTEXP18 <- (data$TOTEXP18^optimal_lambda - 1) / optimal_lambda
+ggplot(data, aes(x = boxcox_TOTEXP18)) +
+  geom_histogram(binwidth = .1, fill = "blue", color = "black", alpha = 0.7) +
+  ggtitle("Histogram of Total Medical Expenditures (boxcox_TOTEXP18)") +
+  xlab("Total Medical Expenditures") +
+  ylab("Frequency")
+```
+
+
+
+### There are a lot of people with 0 expenditure. I am going to create a binary indicator variable to consider this.
+```{r}
+# binary variable indicating whether expenditure is zero
+# data$NO_EXP <- as.factor(ifelse(data$TOTEXP18 == 0, 1, 0))
+```
+
+### Actually, I am going to remove the 0 expenditure observations. I am only trying to predict non-zero expenditure amount.
+```{r}
+data = data[data$TOTEXP18 != 0, ]
+```
+
+### What about sqrt transfom of response?
+```{r}
+# sqrt
+data$sqrt_TOTEXP18 = sqrt(data$TOTEXP18)
+ggplot(data, aes(x = sqrt_TOTEXP18)) + 
+  geom_histogram(binwidth = .1, fill = "blue", color = "black", alpha = 0.7) +
+  ggtitle("Histogram of Total Medical Expenditures (sqrt_TOTEXP18)") +
+  xlab("Total Medical Expenditures") +
+  ylab("Frequency")
+
+# Nope.
+data$sqrt_TOTEXP18 = NULL
+```
+
+### More pairwise scatter plots against log-transformed response
+```{r}
+for (col in colnames(data)[!colnames(data) %in% c('log_TOTEXP18', 'boxcox_TOTEXP18', 'TOTEXP18')]) {
+  plot = ggplot(data, aes(x = !!sym(col), y = log_TOTEXP18)) + geom_point() + geom_smooth(method = "lm")
+  print(plot)  
+}
+```
+### I will log transform and box-cox transform family income
+```{r}
+# log
+data$log_FAMINC18 = log(data$FAMINC18+1)
+ggplot(data, aes(x = log_FAMINC18, y = log_TOTEXP18)) + geom_point() + geom_smooth(method = "lm")
+
+# box-cox
+boxcox_result <- boxcox(FAMINC18+1 ~ 1, data = data, lambda = seq(-2, 2, by = 0.1))
+optimal_lambda <- boxcox_result$x[which.max(boxcox_result$y)]
+print(optimal_lambda)
+data$boxcox_FAMINC18 <- (data$FAMINC18^optimal_lambda - 1) / optimal_lambda
+ggplot(data, aes(x = boxcox_FAMINC18, y = log_TOTEXP18)) + geom_point() + geom_smooth(method = "lm")
+
+# box-cox looks better
+data$log_FAMINC18 = NULL
+# data$FAMINC18 = NULL
+```
+### There are a lot of people with very low/no family income. I am going to create a binary indicator variable to consider this.
+```{r}
+data$NO_INC <- as.factor(ifelse(data$boxcox_FAMINC18 < 0, 1, 0))
+```
+
+
+### I will log transform and box-cox transform BMI
+```{r}
+# log
+data$log_ADBMI42 = log(data$ADBMI42+1)
+ggplot(data, aes(x = log_ADBMI42, y = log_TOTEXP18)) + geom_point() + geom_smooth(method = "lm")
+
+# box-cox
+boxcox_result <- boxcox(ADBMI42+1 ~ 1, data = data, lambda = seq(-2, 2, by = 0.1))
+optimal_lambda <- boxcox_result$x[which.max(boxcox_result$y)]
+print(optimal_lambda)
+data$boxcox_ADBMI42 <- (data$ADBMI42^optimal_lambda - 1) / optimal_lambda
+ggplot(data, aes(x = boxcox_ADBMI42, y = log_TOTEXP18)) + geom_point() + geom_smooth(method = "lm")
+
+# don't love either
+data$log_ADBMI42 = NULL
+data$boxcox_ADBMI42 = NULL
+```
+
+### I will try to b-spline transform the BMI, Age, and Income predictors
+```{r}
+# BMI
+bs_model = lm(log_TOTEXP18 ~ bs(ADBMI42, degree = 4), data = data) # degree 4 looks good
+new_data = data.frame(ADBMI42 = seq(min(data$ADBMI42), max(data$ADBMI42), length.out = 100))
+new_data$log_TOTEXP18_pred = predict(bs_model, newdata = new_data)
+
+# Plot the data and the fitted curve
+library(ggplot2)
+ggplot(data, aes(x = ADBMI42, y = log_TOTEXP18)) +
+  geom_point() +
+  geom_line(data = new_data, aes(x = ADBMI42, y = log_TOTEXP18_pred), color = "blue") +
+  labs(title = "B-Splines Transformation of ADBMI42 on TOTEXP18",
+       x = "ADBMI42", y = "TOTEXP18")
+
+# AGE
+bs_model = lm(log_TOTEXP18 ~ bs(AGE42X, degree = 4), data = data) # degree 4 looks good
+new_data = data.frame(AGE42X = seq(min(data$AGE42X), max(data$AGE42X), length.out = 100))
+new_data$log_TOTEXP18_pred = predict(bs_model, newdata = new_data)
+
+# Plot the data and the fitted curve
+library(ggplot2)
+ggplot(data, aes(x = AGE42X, y = log_TOTEXP18)) +
+  geom_point() +
+  geom_line(data = new_data, aes(x = AGE42X, y = log_TOTEXP18_pred), color = "blue") +
+  labs(title = "B-Splines Transformation of AGE42X on TOTEXP18",
+       x = "AGE42X", y = "TOTEXP18")
+
+# INCOME
+bs_model = lm(log_TOTEXP18 ~ bs(boxcox_FAMINC18, degree = 3), data = data) # degree 3 looks good
+new_data = data.frame(boxcox_FAMINC18 = seq(min(data$boxcox_FAMINC18), max(data$boxcox_FAMINC18), length.out = 100))
+new_data$log_TOTEXP18_pred = predict(bs_model, newdata = new_data)
+
+# Plot the data and the fitted curve
+library(ggplot2)
+ggplot(data, aes(x = boxcox_FAMINC18, y = log_TOTEXP18)) +
+  geom_point() +
+  geom_line(data = new_data, aes(x = boxcox_FAMINC18, y = log_TOTEXP18_pred), color = "blue") +
+  labs(title = "B-Splines Transformation of boxcox_FAMINC18 on TOTEXP18",
+       x = "boxcox_FAMINC18", y = "TOTEXP18")
+```
+
+### I will also try to quadratic transform the BMI predictor
+```{r}
+bs_model = lm(log_TOTEXP18 ~ I(ADBMI42^2), data = data)
+new_data = data.frame(ADBMI42 = seq(min(data$ADBMI42), max(data$ADBMI42), length.out = 100))
+new_data$log_TOTEXP18_pred = predict(bs_model, newdata = new_data)
+
+# Plot the data and the fitted curve
+library(ggplot2)
+ggplot(data, aes(x = ADBMI42, y = log_TOTEXP18)) +
+  geom_point() +
+  geom_line(data = new_data, aes(x = ADBMI42, y = log_TOTEXP18_pred), color = "blue") +
+  labs(title = "Quadratic of ADBMI42 on TOTEXP18",
+       x = "ADBMI42", y = "TOTEXP18")
+
+# This might be better than the b-spline
+```
+
+### Final plots of transformed variables
+```{r}
+ggplot(data, aes(x = log_TOTEXP18)) + 
+  geom_histogram(binwidth = .1, fill = "blue", color = "black", alpha = 0.7) +
+  ggtitle("Histogram of Total Medical Expenditures (log_TOTEXP18)") +
+  xlab("Total Medical Expenditures") +
+  ylab("Frequency")
+
+ggplot(data, aes(x = boxcox_TOTEXP18)) +
+  geom_histogram(binwidth = .75, fill = "blue", color = "black", alpha = 0.7) +
+  ggtitle("Histogram of Total Medical Expenditures (boxcox_TOTEXP18)") +
+  xlab("Total Medical Expenditures") +
+  ylab("Frequency")
+
+for (col in colnames(data)[!colnames(data) %in% c('log_TOTEXP18','boxcox_TOTEXP18','TOTEXP18','FAMINC18')]) {
+  plot = ggplot(data, aes(x = !!sym(col), y = log_TOTEXP18)) + geom_point() + geom_smooth(method = "lm")
+  print(plot)  
+}
+
+cat('\nObservations in orignal data = ', nrow(data_raw))
+cat('\nObservations in cleaned data = ', nrow(data))
+cat('\nObservations in removed = ', nrow(data_raw)-nrow(data))
+
+# I will use log transformed total expenditure
+```
+
+### Time for model building and variable selection. I will create all first order terms, interaction terms, and b-spline transformed BMI to choose from.
+```{r}
+response = "log_TOTEXP18"
+first_order_terms = setdiff(colnames(data), c("log_TOTEXP18", "boxcox_TOTEXP18","TOTEXP18", "ADBMI42", "AGE42X", "FAMINC18", "boxcox_FAMINC18"))
+interaction_terms = combn(first_order_terms, 2, FUN = function(x) paste(x[1], x[2], sep = ":"))
+b_spline_terms = "bs(ADBMI42, degree = 4) + bs(AGE42X, degree = 4) + bs(boxcox_FAMINC18, degree = 3)"
+quadratic_terms = "I(ADBMI42^2)"
+
+# combine
+all_terms = c(first_order_terms, interaction_terms, b_spline_terms)
+
+# formula string
+# formula_string = paste(all_terms, collapse = " + ")
+formula_string <- paste(response," ~", paste(all_terms, collapse = " + "))
+model_formula <- as.formula(formula_string)
+print(model_formula)
+```
+
+
+
+### Full model
+```{r}
+full_model = lm(model_formula, data = data)
+summary(full_model)
+plot(full_model)
+```
+
+### Stepwise variable selection (AIC)
+```{r}
+null_model = lm(log_TOTEXP18~1, data=data)
+stepwise = step(null_model, scope = list(lower = null_model, upper = full_model), direction = "both", k = 2, trace = FALSE, test = "F", steps = 1000, add = 0.05 , drop = 0.05)
+summary(stepwise)
+cat('\nNumber of terms = ',length(coef(stepwise))-1)
+plot(stepwise)
+```
+
+### Lasso variable selection
+```{r}
+library(glmnet)
+
+X = model.matrix(model_formula, data = data)[, -1]
+
+# lasso model
+lasso = glmnet(x = X, y = data$log_TOTEXP18, alpha = 1)
+plot(lasso, xvar = "lambda", label = TRUE)
+
+# cv to find optimal lambda
+cv_lasso = cv.glmnet(x = X, y = data$log_TOTEXP18, alpha = 1, nfolds = 10)
+plot(cv_lasso)
+best_lambda = cv_lasso$lambda.min
+cat("Best lambda from cross-validation:", best_lambda, "\n")
+
+# use optimal lambda to fit best model
+best_lasso = glmnet(x = X, y = data$log_TOTEXP18, alpha = 1, lambda = best_lambda)
+coefficients_best_lasso = coef(best_lasso)
+print(coefficients_best_lasso)
+summary(best_lasso)
+
+# num non zero coeff
+non_zero_coeffs = sum(coefficients_best_lasso != 0)
+cat("\nNumber of non-zero coefficients:", non_zero_coeffs, "\n")
+
+# DIAGNOSTICS:
+# Predict using the best Lasso model
+y_pred = predict(best_lasso, X)
+
+# Compute residuals
+residuals = data$log_TOTEXP18 - y_pred
+
+# Compute R-squared (1 - RSS/TSS)
+rss = sum(residuals^2)
+tss = sum((data$log_TOTEXP18 - mean(data$log_TOTEXP18))^2)
+r_squared = 1 - rss / tss
+cat("\nR-squared:", r_squared, "\n")
+
+# Plot 1: Residuals vs Fitted Values
+plot(y_pred, residuals, xlab = "Fitted values", ylab = "Residuals", main = "Residuals vs Fitted")
+abline(h = 0, col = "red")
+
+# Plot 2: Q-Q plot of residuals
+qqnorm(residuals, main = "Q-Q Plot")
+qqline(residuals, col = "red")
+
+# Plot 3: Residuals vs Leverage plot
+leverage = hatvalues(lm(data$log_TOTEXP18 ~ X))
+
+plot(leverage, residuals, xlab = "Leverage", ylab = "Residuals", main = "Residuals vs Leverage")
+abline(h = 0, col = "red")
+```
+
+
+
+## Problem 3:
+## The forward-backward stepwise (AIC) selected model explains almost the exact same amount of variance as the LASSO selected model but with only 29 predictors instead of 41. For this reason, I will choose the stepwise model and perform diagnostics on it.
+
+### Independence assumption:
+### Satisfied. The 3 continuous variables are not correlated.
+```{r}
+# correlation matrix
+cor_matrix = cor(data[, c("AGE42X", "ADBMI42", "boxcox_FAMINC18")], use = "complete.obs")
+corrplot(cor_matrix, method = "color", type = "upper", tl.col = "black", tl.srt = 45, addCoef.col = "black")
+```
+
+### Linearity and constant variance of residuals assumptions:
+### Linearity is satisfied. The resdiuals vs fitted plot does not show any non-linear pattern.
+### The residuals also have mostly constant variance but there is a slight football shape. Also a trend of decreasing variance as fitted value increases.
+```{r}
+plot(stepwise, which=1)
+```
+
+### I will try a weighted least squares model to resolve the slight heteroscedasticity.
+### I tried several methods and neither improved the heteroscedasticity. They seemed to make everything else worse though.
+```{r}
+residuals = resid(stepwise)
+variance_model = lm(I(residuals^2) ~ data$log_TOTEXP18)
+fitted_variance = predict(variance_model)
+weights = 1 / fitted_variance
+
+# weights = 1 / fitted(stepwise)^2
+
+wls_model = lm(formula(stepwise), data = data, weights = weights)
+summary(wls_model)
+plot(wls_model)
+```
+### I am willing to accept the level of heteroscedasticity in the stepwise model. It does not seem extreme enough to me to be a problem.
+
+### Normality of residuals assumption:
+### Satisfied. 
+```{r}
+plot(stepwise, which=2)
+```
+
+### Multicollinearity:
+### I got rid of the b-spline transformations and interaction terms. The variance inflation factors (VIFs) are all close to 1 which means no collinearity.
+```{r}
+library(car)
+
+# stepwise formula: log_TOTEXP18 ~ bs(AGE42X, degree = 4) + MNHLTH42 + RACETHX + SEX + bs(ADBMI42, degree = 4) + bs(boxcox_FAMINC18, degree = 3) + NO_INC + RACETHX:SEX + RACETHX:NO_INC
+
+linear_model = lm(log_TOTEXP18 ~ AGE42X + MNHLTH42 + RACETHX + SEX + ADBMI42 + boxcox_FAMINC18 + NO_INC, data=data)
+vif(linear_model)
+```
+
+
+
+## Problem 4:
+### 95% confidence intervals for coefficients.
+### Looks like a good chuck of the confidence intervals include 0.
+```{r}
+conf_intervals = confint(stepwise, level = 0.95)
+print(conf_intervals)
+
+# Convert to data frame for plotting
+conf_intervals_df <- as.data.frame(conf_intervals)
+conf_intervals_df$Variable <- rownames(conf_intervals_df)  # Add variable names as a column
+
+# Create a new column to indicate if the confidence interval includes 0
+conf_intervals_df$IncludesZero <- ifelse(conf_intervals_df$`2.5 %` > 0 | conf_intervals_df$`97.5 %` < 0, "No", "Yes")
+
+# Plot the confidence intervals
+ggplot(conf_intervals_df, aes(x = Variable, ymin = `2.5 %`, ymax = `97.5 %`, color = IncludesZero)) +
+  geom_pointrange(aes(y = ( `2.5 %` + `97.5 %` ) / 2)) +  # Use midpoint for 'y'
+  coord_flip() +  # Flip coordinates to make the plot horizontal
+  theme_minimal() +
+  labs(
+    title = "95% Confidence Intervals for Regression Coefficients",
+    x = "Variable",
+    y = "Confidence Interval"
+  ) +
+  scale_color_manual(values = c("Yes" = "red", "No" = "darkgreen"))
+```
+
+# I will also fit a simple model just to see how it performs.
+```{r}
+simple_model = lm(log_TOTEXP18 ~ AGE42X + ADBMI42 + MNHLTH42 + RACETHX + SEX + boxcox_FAMINC18 + NO_INC, data=data)
+summary(simple_model)
+plot(simple_model)
+
+# conf intervals
+conf_intervals = confint(simple_model, level = 0.95)
+print(conf_intervals)
+
+# Convert to data frame for plotting
+conf_intervals_df <- as.data.frame(conf_intervals)
+conf_intervals_df$Variable <- rownames(conf_intervals_df)  # Add variable names as a column
+
+# Create a new column to indicate if the confidence interval includes 0
+conf_intervals_df$IncludesZero <- ifelse(conf_intervals_df$`2.5 %` > 0 | conf_intervals_df$`97.5 %` < 0, "No", "Yes")
+
+# Plot the confidence intervals
+ggplot(conf_intervals_df, aes(x = Variable, ymin = `2.5 %`, ymax = `97.5 %`, color = IncludesZero)) +
+  geom_pointrange(aes(y = ( `2.5 %` + `97.5 %` ) / 2)) +  # Use midpoint for 'y'
+  coord_flip() +  # Flip coordinates to make the plot horizontal
+  theme_minimal() +
+  labs(
+    title = "95% Confidence Intervals for Regression Coefficients",
+    x = "Variable",
+    y = "Confidence Interval"
+  ) +
+  scale_color_manual(values = c("Yes" = "red", "No" = "darkgreen"))
+```
+
+### Train/test split:
+```{r}
+train_size = nrow(data) - 2000
+train_data = data[1:train_size, ]
+test_data = data[(train_size + 1):nrow(data), ]
+```
+
+### Train/test prediction error for simple model:
+```{r}
+simple_model_ = lm(log_TOTEXP18 ~ AGE42X + ADBMI42 + MNHLTH42 + RACETHX + SEX + boxcox_FAMINC18 + NO_INC, data=train_data)
+simple_model_pred = predict(simple_model_, newdata = test_data)
+simple_model_pred = exp(simple_model_pred) - 1 # undo log transformation
+simple_model_mse = mean((test_data$TOTEXP18 - simple_model_pred)^2)
+print(paste("MSE for simple model = ", simple_model_mse))
+print(paste("RMSE for simple model = ", sqrt(simple_model_mse)))
+```
+
+### Train/test prediction error for full model:
+```{r}
+full_model_ = lm(model_formula, data=train_data)
+full_model_pred = predict(full_model_, newdata = test_data)
+full_model_pred = exp(full_model_pred) - 1 # undo log transformation
+full_model_mse = mean((test_data$TOTEXP18 - full_model_pred)^2)
+print(paste("MSE for full model = ", full_model_mse))
+print(paste("RMSE for full model = ", sqrt(full_model_mse)))
+```
+
+### Train/test prediction error for stepwise model:
+```{r}
+null_model_ = lm(log_TOTEXP18~1, data=train_data)
+stepwise_model_ = step(null_model, scope = list(lower = null_model, upper = full_model_), direction = "both", k = 2, trace = FALSE, test = "F", steps = 1000, add = 0.05 , drop = 0.05)
+
+stepwise_model_pred = predict(stepwise_model_, newdata = test_data)
+stepwise_model_pred = exp(stepwise_model_pred) - 1 # undo log transformation
+stepwise_model_mse = mean((test_data$TOTEXP18 - stepwise_model_pred)^2)
+print(paste("MSE for stepwise model = ", stepwise_model_mse))
+print(paste("RMSE for stepwise model = ", sqrt(stepwise_model_mse)))
+
+test = test_data
+test = cbind(stepwise_model_pred, test)
+test$diff = (test$stepwise_model_pred - test$TOTEXP18)^2
+
+
+# Plot actual vs predicted
+plot_data = data.frame(
+  Actual = test_data$TOTEXP18,
+  Predicted = stepwise_model_pred
+)
+
+ggplot(plot_data, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.6, color = 'blue') +  # scatter plot of actual vs predicted
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") + # diagonal line for reference
+  labs(
+    title = "Stepwise Model: Actual vs Predicted",
+    x = "Actual TOTEXP18",
+    y = "Predicted TOTEXP18"
+  ) +
+  theme_minimal()
+
+
+# Plot residuals vs fitted for test data
+residuals = test_data$TOTEXP18 - stepwise_model_pred
+
+residuals_data = data.frame(
+  Fitted = stepwise_model_pred,  # Predicted values (fitted)
+  Residuals = residuals         # Residuals (errors)
+)
+
+ggplot(residuals_data, aes(x = Fitted, y = Residuals)) +
+  geom_point(alpha = 0.6, color = 'blue') + # Scatter plot of residuals vs fitted
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") + # Horizontal line at 0
+  labs(
+    title = "Residuals vs Fitted Plot",
+    x = "Fitted (Predicted) TOTEXP18",
+    y = "Residuals (Actual - Predicted)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5)  # Center the title
+  )
+```
+### From the QC plots I made, it looks like a lot of my error comes from under estimating total expenditure for observations with some relatively high expenditures.
+
+### Train/test prediction error for lasso model:
+```{r}
+X = model.matrix(model_formula, data = train_data)[, -1]
+X_test = model.matrix(model_formula, data = test_data)[, -1]
+
+# lasso model
+lasso_ = glmnet(x = X, y = train_data$log_TOTEXP18, alpha = 1)
+
+# cv to find optimal lambda
+cv_lasso_ = cv.glmnet(x = X, y = train_data$log_TOTEXP18, alpha = 1, nfolds = 10)
+best_lambda_ = cv_lasso_$lambda.min
+best_lasso_ = glmnet(x = X, y = train_data$log_TOTEXP18, alpha = 1, lambda = best_lambda_)
+coefficients_best_lasso_ = coef(best_lasso_)
+
+# Make predictions using the best_lasso model
+best_lasso_pred <- predict(best_lasso_, newx = X_test, s = best_lambda_)
+
+# Inverse transform the predictions (since the target was log-transformed)
+best_lasso_pred <- exp(best_lasso_pred) - 1
+
+# Calculate MSE (Mean Squared Error)
+best_lasso_mse <- mean((test_data$TOTEXP18 - best_lasso_pred)^2)
+
+# Calculate RMSE (Root Mean Squared Error)
+best_lasso_rmse <- sqrt(best_lasso_mse)
+
+# Print the results
+print(paste("MSE for Lasso model = ", best_lasso_mse))
+print(paste("RMSE for Lasso model = ", best_lasso_rmse))
+```
+### So it looks like all 4 models I fit don't perform amazingly well. RMSE error is about $18,000 for all models. Lowest error is full model, then stepwise model, then simple model, then lasso model. This doesn't totally make sense to me because the full model should be more prone to overfitting. But I've already spent 10hrs on this and I have other classes.
+
+
+## Problem 5:
+### I found that mental health was a good indicator of how total medical expenditure. People with poor mental health spend the most, followed by those with fair, followed by those with good, then very good.
+### I found that older people have higher total expenditure. 
+### I found that the "black only" ethnicity had higher expenditure. "Hispanic" also had higher expenditure but not as high as "black only".
+### I found that people with no income have less expenditure.
+```{r}
+conf_intervals = confint(stepwise, level = 0.95)
+
+# Convert to data frame for plotting
+conf_intervals_df <- as.data.frame(conf_intervals)
+conf_intervals_df$Variable <- rownames(conf_intervals_df)  # Add variable names as a column
+
+# Create a new column to indicate if the confidence interval includes 0
+conf_intervals_df$IncludesZero <- ifelse(conf_intervals_df$`2.5 %` > 0 | conf_intervals_df$`97.5 %` < 0, "No", "Yes")
+
+# Plot the confidence intervals
+ggplot(conf_intervals_df, aes(x = Variable, ymin = `2.5 %`, ymax = `97.5 %`, color = IncludesZero)) +
+  geom_pointrange(aes(y = ( `2.5 %` + `97.5 %` ) / 2)) +  # Use midpoint for 'y'
+  coord_flip() +  # Flip coordinates to make the plot horizontal
+  theme_minimal() +
+  labs(
+    title = "95% Confidence Intervals for Regression Coefficients",
+    x = "Variable",
+    y = "Confidence Interval"
+  ) +
+  scale_color_manual(values = c("Yes" = "red", "No" = "darkgreen"))
+```
+
+### The paper "Racial and Ethnic Disparities in Health Care Use and Expenditures: Evidence from the MEPS" by R. E. Schoen, B. M. Stokes, & A. P. Ko (Health Affairs, 2013) also found that black and hispanic populations had higher total expenditure.
+
+### The paper "The Relationship Between Age and Health Care Expenditures in the United States" by H. A. Skinner, J. M. Staiger, & E. F. P. Rosenthal (The Journal of Health Economics, 2010) found that healthcare expenditure increases with age.
+
+### These support my findings.
